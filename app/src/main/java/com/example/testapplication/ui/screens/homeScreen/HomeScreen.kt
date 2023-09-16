@@ -13,14 +13,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +26,7 @@ import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +47,7 @@ import coil.request.ImageRequest
 import com.example.testapplication.R
 import com.example.testapplication.network.Story
 import com.example.testapplication.ui.navigation.NavigationDestination
+import kotlinx.coroutines.flow.StateFlow
 
 object HomeDestination : NavigationDestination {
     override val route = "home"
@@ -58,14 +57,16 @@ object HomeDestination : NavigationDestination {
 @Composable
 fun HomeScreen(
     appUiState: AppUiState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: HomeViewModel
 ) {
     Log.i("HomeScreen", "Input")
     when (appUiState) {
         is AppUiState.Loading -> LoadingScreen(modifier)
         is AppUiState.Success -> NewsScreen(
-            newsList = appUiState.characterRequest,
-            modifier = modifier
+            newsList = viewModel.newsList,
+            modifier = modifier,
+            viewModel = viewModel
         )
         is AppUiState.Error -> ErrorScreen(modifier)
     }
@@ -73,18 +74,34 @@ fun HomeScreen(
 
 @Composable
 fun NewsScreen(
-    newsList: List<Story>,
-    modifier: Modifier = Modifier
+    newsList: StateFlow<List<Story>>,
+    modifier: Modifier = Modifier,
+    viewModel: HomeViewModel
 ) {
+    val searchText by viewModel.searchText.collectAsState()
+    val testList = newsList.collectAsState().value
     Column(
         modifier = modifier.fillMaxSize(),
     ) {
+        OutlinedTextField(
+            value = searchText,
+            onValueChange = viewModel::onSearchTextChange,
+            label = null,
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text(text = stringResource(id = R.string.retry))},
+        )
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(6.dp),
         ) {
-            items(newsList) {news ->
+            items(
+                testList,
+                key = { it.exp_date }
+            ) {news ->
                 CardNews(
                     story = news,
                     saveNews = {  }

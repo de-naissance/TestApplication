@@ -6,15 +6,22 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.testapplication.data.AppRepository
-import com.example.testapplication.network.Detail
-import com.example.testapplication.network.NewsRequest
 import com.example.testapplication.network.Story
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.IOException
 
 sealed interface AppUiState {
-    data class Success(val characterRequest: List<Story>) : AppUiState
+    object Success : AppUiState
     object Error : AppUiState
     object Loading : AppUiState
 }
@@ -28,10 +35,38 @@ class HomeViewModel(
     var appUiState: AppUiState by mutableStateOf(AppUiState.Loading)
         private set
 
-    init {
-        getNews()
-    }
+    private val firstRequest = mutableStateOf<List<Story>>(listOf())
+    private val _searchText = MutableStateFlow("")
 
+    val searchText = _searchText.asStateFlow()
+    private val _isSearching = MutableStateFlow(false)
+
+    val isSearching = _isSearching.asStateFlow()
+    private val _newsList = MutableStateFlow<List<Story>>(firstRequest.value)
+
+    val newsList = searchText
+        .debounce(1000L)
+        .onEach { _isSearching.update { true } }
+        .combine(_newsList) { text, news ->
+            if (text.isBlank()) {
+                if (_newsList !== firstRequest) _newsList.update { firstRequest.value }
+                news
+            } else {
+                delay(2000L)
+                news.filter {
+                    doesMatchSearchQuery(
+                        query = text,
+                        label = it.news_name,
+                    )
+                }
+            }
+        }
+        .onEach { _isSearching.update { false } }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            _newsList.value
+        )
     /**
      * A function that sends a request to display a list of characters, indicating the page.
      * The search parameters are taken from the [SearchFilter] variable
@@ -41,13 +76,29 @@ class HomeViewModel(
             appUiState = AppUiState.Loading
             appUiState = try {
                 val newsRequest = appRepository.getNews()
-                val characters = newsRequest.detail.stories
-                AppUiState.Success(characters)
+                firstRequest.value = newsRequest.detail.stories
+                AppUiState.Success
             } catch (e: IOException) {
                 AppUiState.Error
             } catch (e: HttpException) {
                 AppUiState.Error
             }
         }
+    }
+
+    /**
+    Фильтрация поиского запроса на схожесть
+     */
+    private fun doesMatchSearchQuery(
+        query: String,
+        label: String
+    ): Boolean {
+        return label.contains(query, ignoreCase = true)
+    }
+    fun onSearchTextChange(text: String) {
+        _searchText.value = text
+    }
+    init {
+        getNews()
     }
 }

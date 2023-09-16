@@ -25,7 +25,8 @@ fun TestNavHost(
             val homeViewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory)
 
             HomeScreen(
-                appUiState = homeViewModel.appUiState
+                appUiState = homeViewModel.appUiState,
+                viewModel = homeViewModel
             )
         }
     }
