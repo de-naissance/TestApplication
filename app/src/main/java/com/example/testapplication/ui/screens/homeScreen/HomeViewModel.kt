@@ -3,9 +3,13 @@ package com.example.testapplication.ui.screens.homeScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.testapplication.data.AppRepository
+import com.example.testapplication.data.local.AppRepositoryLocal
+import com.example.testapplication.data.local.favorite.Favorite
 import com.example.testapplication.network.Story
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -27,6 +32,7 @@ sealed interface AppUiState {
 }
 class HomeViewModel(
     private val appRepository: AppRepository,
+    private val appRepositoryLocal: AppRepositoryLocal
 ): ViewModel() {
 
     /**
@@ -97,6 +103,34 @@ class HomeViewModel(
     }
     fun onSearchTextChange(text: String) {
         _searchText.value = text
+    }
+
+    suspend fun insertFavorite(uniqueName: String) {
+        appRepositoryLocal.insertFavorite(
+            Favorite(uniqueName = uniqueName)
+        )
+    }
+
+    suspend fun deleteFavorite(uniqueName: String) {
+        appRepositoryLocal.deleteFavorite(uniqueName)
+    }
+
+    fun getFavoriteNews(uniqueName: String): LiveData<Boolean> {
+        appRepositoryLocal.getFavoriteNews(uniqueName)
+        val result = MutableLiveData<Boolean>()
+        viewModelScope.launch {
+            result.value = uniqueName == appRepositoryLocal.getFavoriteNews(uniqueName)
+                .map { it?.uniqueName ?: "" }
+                .stateIn(
+                    scope = viewModelScope
+                ).value
+        }/*
+        val getNews = appRepositoryLocal.getFavoriteNews(uniqueName)
+            .map { it?.uniqueName ?: "" }
+            .stateIn(
+                scope = viewModelScope
+            )*/
+        return result
     }
     init {
         getNews()

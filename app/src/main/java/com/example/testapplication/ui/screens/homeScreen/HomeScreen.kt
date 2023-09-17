@@ -26,8 +26,11 @@ import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,17 +40,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.LiveData
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.testapplication.R
 import com.example.testapplication.network.Story
 import com.example.testapplication.ui.navigation.NavigationDestination
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 
 object HomeDestination : NavigationDestination {
     override val route = "home"
@@ -60,7 +71,6 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel
 ) {
-    Log.i("HomeScreen", "Input")
     when (appUiState) {
         is AppUiState.Loading -> LoadingScreen(modifier)
         is AppUiState.Success -> NewsScreen(
@@ -80,6 +90,8 @@ fun NewsScreen(
 ) {
     val searchText by viewModel.searchText.collectAsState()
     val testList = newsList.collectAsState().value
+    val coroutineScope = rememberCoroutineScope()
+
     Column(
         modifier = modifier.fillMaxSize(),
     ) {
@@ -100,11 +112,21 @@ fun NewsScreen(
         ) {
             items(
                 testList,
-                key = { it.exp_date }
+                key = { it -> it.exp_date }
             ) {news ->
                 CardNews(
                     story = news,
-                    saveNews = {  }
+                    saveNews = {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            viewModel.insertFavorite(it)
+                        }
+                    },
+                    deleteNews = {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            viewModel.deleteFavorite(it)
+                        }
+                    },
+                    vm = viewModel
                 )
             }
         }
@@ -115,11 +137,15 @@ fun NewsScreen(
 @Composable
 fun CardNews(
     story: Story,
-    saveNews: () -> Unit,
-    modifier: Modifier = Modifier
+    saveNews: (String) -> Unit,
+    deleteNews: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    vm: HomeViewModel
 ) {
+    val uriHandler = LocalUriHandler.current
+
     Card(
-        onClick = saveNews,
+        onClick = { uriHandler.openUri(story.url) },
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 6.dp, vertical = 8.dp)
@@ -129,6 +155,7 @@ fun CardNews(
         Column(
 
         ) {
+
             AsyncImage(
                 model = ImageRequest.Builder(context = LocalContext.current)
                     .data(story.image_logo)
@@ -155,7 +182,11 @@ fun CardNews(
                     lineHeight = 16.sp,
                     overflow = TextOverflow.Ellipsis
                 )
-                FavoriteIcon()
+                FavoriteIcon(
+                    saveNews = { saveNews(story.unique_name) },
+                    deleteNews = { deleteNews(story.unique_name) },
+                    checkNews = vm.getFavoriteNews(story.unique_name)
+                )
             }
         }
     }
@@ -163,29 +194,30 @@ fun CardNews(
 
 @Composable
 fun FavoriteIcon(
-    /*flight: Flights,
-    viewModel: SelectedAirportViewModel*/
+    saveNews: () -> Unit,
+    deleteNews: () -> Unit,
+    checkNews: LiveData<Boolean>
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    var checked by remember { mutableStateOf<Boolean?>(true) }
+    val checkState = checkNews.observeAsState()
+    var checked by remember { mutableStateOf(checkState.value ?: false) }
 
-    /*if (checked == null) {
-        coroutineScope.launch {
-            *//*checked = viewModel.checkAirport(flight.id)*//*
-        }
-    }*/
+    LaunchedEffect(checkState.value) {
+        checked = checkState.value ?: false
+    }
+
     IconToggleButton(
         modifier = Modifier
             .fillMaxHeight(),
-        checked = checked == true,
+        checked = checked,
         onCheckedChange = {
             checked = it
-
+            if (!checked) deleteNews()
+            else saveNews()
         }) {
         /** Выбор цвета иконки */
         val tint by animateColorAsState(
-            if (checked == true) Color(0xFFFF8006)
-            else Color(0xFFB0BEC5)
+            if (checked) Color.Red
+            else Color(0xFFB0BEC5), label = "Choose color"
         )
 
         Icon(Icons.Filled.Favorite, contentDescription = "Localized description", tint = tint)
